@@ -90,6 +90,7 @@ def get_weather(location: str) -> dict:
     """
     return {
         "temperature": 72,
+        "unit of measurement": "Fahrenheit",
         "condition": "sunny",
         "location": location
     }

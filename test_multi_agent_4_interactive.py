@@ -40,6 +40,8 @@ async def interactive_cli(agent_url="http://localhost:8001", show_history=False)
     print(f"🔗 Connecting to agent at: {agent_url}")
     print("💡 Type 'quit', 'exit', or ':q' to exit")
     print("💡 Type 'help' for example queries")
+    print("💡 Type 'reset' to start a fresh conversation")
+    print("💬 Conversation history is maintained automatically")
     print("=" * 50)
     
     try:
@@ -69,6 +71,9 @@ async def interactive_cli(agent_url="http://localhost:8001", show_history=False)
         # Conversation history for this session
         conversation_history = []
         
+        # Create a single task ID for the entire conversation session
+        task_id = None
+        
         # Start the main input loop
         while True:
             try:
@@ -91,6 +96,13 @@ async def interactive_cli(agent_url="http://localhost:8001", show_history=False)
                     print_conversation_history(conversation_history)
                     continue
                 
+                # Check for reset command
+                if user_input.lower() == "reset":
+                    task_id = None  # Reset task ID to start new conversation
+                    conversation_history.clear()
+                    print("🔄 Conversation reset! Starting fresh.")
+                    continue
+                
                 # Skip empty input
                 if not user_input:
                     continue
@@ -102,8 +114,12 @@ async def interactive_cli(agent_url="http://localhost:8001", show_history=False)
                 thinking_task = asyncio.create_task(show_thinking_animation())
                 
                 try:
-                    # Send message to agent
-                    response = client.chat(user_input)
+                    # Send message to agent - reuse task_id to maintain conversation history
+                    if task_id is None:
+                        # First message - create new task
+                        task_id = client.create_task({"type": "chat"})
+                    
+                    response = client.chat(user_input, task_id=task_id)
                     
                     # Stop thinking animation
                     thinking_task.cancel()
@@ -175,6 +191,7 @@ def print_help():
     print("\n📖 Special Commands:")
     print("   • 'help' - Show this help")
     print("   • 'history' - Show conversation history")
+    print("   • 'reset' - Reset conversation and start fresh")
     print("   • 'quit' or ':q' - Exit the CLI")
 
 
