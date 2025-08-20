@@ -152,46 +152,50 @@ class A2AServer:
             message = request.json
             added_message = self.a2a_ollama.message_handler.add_message(task_id, message)
             
-            # Process the task if status is submitted
-            if task["status"] == "submitted":
-                self.a2a_ollama.task_manager.update_task_status(task_id, "working")
+            print(f"🔍 DEBUG: Processing message for task {task_id}, current status: {task['status']}")
+            
+            # Always process new messages (reset status to working for reused tasks)
+            self.a2a_ollama.task_manager.update_task_status(task_id, "working")
+            
+            print(f"🔍 DEBUG: Updated task status to working, processing task...")
+            
+            # Send webhook notification for status change
+            if self.webhook_url:
+                self._send_webhook_notification(
+                    task_id, 
+                    "working",
+                    {"message_id": added_message["id"]}
+                )
+            
+            # Handle async _process_task method
+            import asyncio
+            try:
+                # Run the async method in the event loop
+                result = asyncio.run(self.a2a_ollama._process_task(task_id))
+                print(f"🔍 DEBUG: Task processing result: {result}")
+            except RuntimeError:
+                # If there's already an event loop running, use run_coroutine_threadsafe
+                import threading
+                import concurrent.futures
                 
-                # Send webhook notification for status change
-                if self.webhook_url:
-                    self._send_webhook_notification(
-                        task_id, 
-                        "working",
-                        {"message_id": added_message["id"]}
-                    )
+                def run_async_task():
+                    return asyncio.run(self.a2a_ollama._process_task(task_id))
                 
-                # Handle async _process_task method
-                import asyncio
-                try:
-                    # Run the async method in the event loop
-                    result = asyncio.run(self.a2a_ollama._process_task(task_id))
-                except RuntimeError:
-                    # If there's already an event loop running, use run_coroutine_threadsafe
-                    import threading
-                    import concurrent.futures
-                    
-                    def run_async_task():
-                        return asyncio.run(self.a2a_ollama._process_task(task_id))
-                    
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(run_async_task)
-                        result = future.result()
-                
-                # Send webhook notification for completion
-                if self.webhook_url:
-                    self._send_webhook_notification(
-                        task_id, 
-                        task["status"],
-                        {"result": result}
-                    )
-                    
-                return jsonify(result)
-            else:
-                return jsonify({"message_id": added_message["id"]})
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async_task)
+                    result = future.result()
+                    print(f"🔍 DEBUG: Task processing result (threaded): {result}")
+            
+            # Send webhook notification for completion
+            if self.webhook_url:
+                self._send_webhook_notification(
+                    task_id, 
+                    task["status"],
+                    {"result": result}
+                )
+            
+            print(f"🔍 DEBUG: Returning result: {result}")
+            return jsonify(result)
         
         @self.app.route("/tasks/<task_id>/messages/stream", methods=["POST"])
         def add_message_stream(task_id):
